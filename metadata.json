@@ -1,0 +1,7 @@
+{
+  "name": "Bora Dividir",
+  "description": "Um aplicativo para ajudar a dividir despesas entre amigos. Crie eventos, adicione participantes, registre quem pagou o quê, anexe comprovantes e calcule facilmente quem deve a quem.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

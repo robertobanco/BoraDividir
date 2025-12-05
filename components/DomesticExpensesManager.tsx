@@ -25,6 +25,7 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showExportModal, setShowExportModal] = useState(false);
     const [editingExpense, setEditingExpense] = useState<DomesticExpense | null>(null);
+    const [activeExpenseId, setActiveExpenseId] = useState<string | null>(null);
 
     const [description, setDescription] = useState('');
     const [amount, setAmount] = useState('');
@@ -34,6 +35,87 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
     const [ownershipPercentage, setOwnershipPercentage] = useState(50);
     const [frequency, setFrequency] = useState<'UNICA' | 'MENSAL' | 'PARCELADA'>('UNICA');
     const [installmentsCount, setInstallmentsCount] = useState('2');
+
+    // Forçar preenchimento de nomes se estiverem com o padrão
+    React.useEffect(() => {
+        if (userSettings.user1Name === 'Participante 1' || userSettings.user2Name === 'Participante 2') {
+            setShowSettingsModal(true);
+        }
+    }, []); // Executa apenas na montagem
+
+
+    
+    // Helper para calcular qual parcela está sendo exibida
+    const getCurrentInstallment = (expense: DomesticExpense, currentMonthKey: string): number | null => {
+        if (expense.frequency !== 'PARCELADA' || !expense.installmentsCount) return null;
+        const [expenseYear, expenseMonth] = expense.date.split('-').map(Number);
+        const [currentYear, currentMonth] = currentMonthKey.split('-').map(Number);
+        const monthsDiff = (currentYear - expenseYear) * 12 + (currentMonth - expenseMonth);
+        if (monthsDiff < 0 || monthsDiff >= expense.installmentsCount) return null;
+        return monthsDiff + 1;
+    };
+
+    const handleExportExcel = () => {
+        const monthName = new Date(currentMonth + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        
+        // Preparar dados para o Excel
+        const data = monthlyBalance.items.map(item => ({
+            Data: new Date(item.date).toLocaleDateString('pt-BR'),
+            Descrição: item.description,
+            Categoria: item.category,
+            Valor: item.amount,
+            'Quem Pagou': item.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name,
+            'Responsabilidade': item.ownershipPercentage !== 50 
+                ? `${userSettings.user1Name} ${item.ownershipPercentage}% / ${userSettings.user2Name} ${100 - item.ownershipPercentage}%`
+                : 'Meio a Meio',
+            'Recorrência': item.frequency === 'UNICA' ? 'Única' : item.frequency === 'MENSAL' ? 'Mensal' : `Parcelada (${item.installmentsCount}x)`
+        }));
+
+        // Adicionar resumo no final
+        data.push({} as any); // Linha em branco
+        data.push({
+            Data: 'RESUMO',
+            Descrição: 'Total Gastos',
+            Valor: monthlyBalance.total
+        } as any);
+        data.push({
+            Data: '',
+            Descrição: `${userSettings.user1Name} Pagou`,
+            Valor: monthlyBalance.user1Paid
+        } as any);
+        data.push({
+            Data: '',
+            Descrição: `${userSettings.user2Name} Pagou`,
+            Valor: monthlyBalance.user2Paid
+        } as any);
+        
+        if (monthlyBalance.settlement) {
+            data.push({
+                Data: 'RESULTADO',
+                Descrição: `${monthlyBalance.settlement.from} deve a ${monthlyBalance.settlement.to}`,
+                Valor: monthlyBalance.settlement.amount
+            } as any);
+        }
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Despesas");
+        
+        // Ajustar largura das colunas
+        const wscols = [
+            {wch: 12}, // Data
+            {wch: 30}, // Descrição
+            {wch: 15}, // Categoria
+            {wch: 12}, // Valor
+            {wch: 15}, // Quem Pagou
+            {wch: 30}, // Responsabilidade
+            {wch: 20}  // Recorrência
+        ];
+        ws['!cols'] = wscols;
+
+        XLSX.writeFile(wb, `BoraDividir_${monthName.replace(' ', '_')}.xlsx`);
+        setShowExportModal(false);
+    };
 
     const monthlyBalance = useMemo(() =>
         calculateMonthlyBalance(expenses, userSettings, currentMonth),
@@ -137,8 +219,8 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
             `📝 *Detalhamento:*`,
             ...monthlyBalance.items.map(e => {
                 const payer = e.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name;
-                const responsibility = e.ownershipPercentage !== 50 
-                    ? ` (${userSettings.user1Name} ${e.ownershipPercentage}% / ${100 - e.ownershipPercentage}% ${userSettings.user2Name})` 
+                const responsibility = e.ownershipPercentage !== 50
+                    ? ` (${userSettings.user1Name} ${e.ownershipPercentage}% / ${100 - e.ownershipPercentage}% ${userSettings.user2Name})`
                     : '';
                 return `- ${e.description}: ${formatCurrency(e.amount)} (Pago por ${payer}${responsibility})`;
             })
@@ -172,82 +254,10 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
     );
 
 
-    // Helper para calcular qual parcela está sendo exibida
-    const getCurrentInstallment = (expense: DomesticExpense, currentMonthKey: string): number | null => {
-        if (expense.frequency !== 'PARCELADA' || !expense.installmentsCount) return null;
-        
-        const [expenseYear, expenseMonth] = expense.date.split('-').map(Number);
-        const [currentYear, currentMonth] = currentMonthKey.split('-').map(Number);
-        
-        const monthsDiff = (currentYear - expenseYear) * 12 + (currentMonth - expenseMonth);
-        
-        if (monthsDiff < 0 || monthsDiff >= expense.installmentsCount) return null;
-        
-        return monthsDiff + 1; // Parcela atual (1-indexed)
-    };
+    
 
 
-    const handleExportExcel = () => {
-        const monthName = new Date(currentMonth + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-        
-        // Preparar dados para o Excel
-        const data = monthlyBalance.items.map(item => ({
-            Data: new Date(item.date).toLocaleDateString('pt-BR'),
-            Descrição: item.description,
-            Categoria: item.category,
-            Valor: item.amount,
-            'Quem Pagou': item.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name,
-            'Responsabilidade': item.ownershipPercentage !== 50 
-                ? `${userSettings.user1Name} ${item.ownershipPercentage}% / ${userSettings.user2Name} ${100 - item.ownershipPercentage}%`
-                : 'Meio a Meio',
-            'Recorrência': item.frequency === 'UNICA' ? 'Única' : item.frequency === 'MENSAL' ? 'Mensal' : `Parcelada (${item.installmentsCount}x)`
-        }));
-
-        // Adicionar resumo no final
-        data.push({} as any); // Linha em branco
-        data.push({
-            Data: 'RESUMO',
-            Descrição: 'Total Gastos',
-            Valor: monthlyBalance.total
-        } as any);
-        data.push({
-            Data: '',
-            Descrição: `${userSettings.user1Name} Pagou`,
-            Valor: monthlyBalance.user1Paid
-        } as any);
-        data.push({
-            Data: '',
-            Descrição: `${userSettings.user2Name} Pagou`,
-            Valor: monthlyBalance.user2Paid
-        } as any);
-        
-        if (monthlyBalance.settlement) {
-            data.push({
-                Data: 'RESULTADO',
-                Descrição: `${monthlyBalance.settlement.from} deve a ${monthlyBalance.settlement.to}`,
-                Valor: monthlyBalance.settlement.amount
-            } as any);
-        }
-
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Despesas");
-        
-        // Ajustar largura das colunas
-        const wscols = [
-            {wch: 12}, // Data
-            {wch: 30}, // Descrição
-            {wch: 15}, // Categoria
-            {wch: 12}, // Valor
-            {wch: 15}, // Quem Pagou
-            {wch: 30}, // Responsabilidade
-            {wch: 20}  // Recorrência
-        ];
-        ws['!cols'] = wscols;
-
-        XLSX.writeFile(wb, `BoraDividir_${monthName.replace(' ', '_')}.xlsx`);
-        setShowExportModal(false);
-    };
+    
     return (
         <div className="space-y-8">
             {/* Month Navigation */}
@@ -418,140 +428,101 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                             const displayDate = new Date(y, m - 1, d, 12, 0, 0);
                             const dateStr = isNaN(displayDate.getTime()) ? '--' : displayDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
-                        
-    // Helper para calcular qual parcela está sendo exibida
-    const getCurrentInstallment = (expense: DomesticExpense, currentMonthKey: string): number | null => {
-        if (expense.frequency !== 'PARCELADA' || !expense.installmentsCount) return null;
-        
-        const [expenseYear, expenseMonth] = expense.date.split('-').map(Number);
-        const [currentYear, currentMonth] = currentMonthKey.split('-').map(Number);
-        
-        const monthsDiff = (currentYear - expenseYear) * 12 + (currentMonth - expenseMonth);
-        
-        if (monthsDiff < 0 || monthsDiff >= expense.installmentsCount) return null;
-        
-        return monthsDiff + 1; // Parcela atual (1-indexed)
-    };
-
-
-    const handleExportExcel = () => {
-        const monthName = new Date(currentMonth + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-        
-        // Preparar dados para o Excel
-        const data = monthlyBalance.items.map(item => ({
-            Data: new Date(item.date).toLocaleDateString('pt-BR'),
-            Descrição: item.description,
-            Categoria: item.category,
-            Valor: item.amount,
-            'Quem Pagou': item.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name,
-            'Responsabilidade': item.ownershipPercentage !== 50 
-                ? `${userSettings.user1Name} ${item.ownershipPercentage}% / ${userSettings.user2Name} ${100 - item.ownershipPercentage}%`
-                : 'Meio a Meio',
-            'Recorrência': item.frequency === 'UNICA' ? 'Única' : item.frequency === 'MENSAL' ? 'Mensal' : `Parcelada (${item.installmentsCount}x)`
-        }));
-
-        // Adicionar resumo no final
-        data.push({} as any); // Linha em branco
-        data.push({
-            Data: 'RESUMO',
-            Descrição: 'Total Gastos',
-            Valor: monthlyBalance.total
-        } as any);
-        data.push({
-            Data: '',
-            Descrição: `${userSettings.user1Name} Pagou`,
-            Valor: monthlyBalance.user1Paid
-        } as any);
-        data.push({
-            Data: '',
-            Descrição: `${userSettings.user2Name} Pagou`,
-            Valor: monthlyBalance.user2Paid
-        } as any);
-        
-        if (monthlyBalance.settlement) {
-            data.push({
-                Data: 'RESULTADO',
-                Descrição: `${monthlyBalance.settlement.from} deve a ${monthlyBalance.settlement.to}`,
-                Valor: monthlyBalance.settlement.amount
-            } as any);
-        }
-
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Despesas");
-        
-        // Ajustar largura das colunas
-        const wscols = [
-            {wch: 12}, // Data
-            {wch: 30}, // Descrição
-            {wch: 15}, // Categoria
-            {wch: 12}, // Valor
-            {wch: 15}, // Quem Pagou
-            {wch: 30}, // Responsabilidade
-            {wch: 20}  // Recorrência
-        ];
-        ws['!cols'] = wscols;
-
-        XLSX.writeFile(wb, `BoraDividir_${monthName.replace(' ', '_')}.xlsx`);
-        setShowExportModal(false);
-    };
-    return (
-                                <div key={expense.id} className="p-4 hover:bg-slate-800/50 dark:hover:bg-slate-700/50 transition-colors group flex items-center justify-between">
-                                    <div className="flex items-center gap-4 flex-1">
-                                        <div className={`p-3 rounded-xl ${categoryInfo.bgColor}`}>
-                                            <span className="text-2xl">{categoryInfo.icon}</span>
+                            return (
+                                <div 
+                                    key={expense.id} 
+                                    onClick={() => setActiveExpenseId(activeExpenseId === expense.id ? null : expense.id)}
+                                    className={`relative p-4 transition-all border-b border-slate-800/50 dark:border-slate-700/50 last:border-0 cursor-pointer
+                                        ${activeExpenseId === expense.id ? 'bg-slate-800/80 dark:bg-slate-700/80' : 'hover:bg-slate-800/50 dark:hover:bg-slate-700/50'}
+                                    `}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        {/* Icon */}
+                                        <div className={`p-2.5 rounded-xl ${categoryInfo.bgColor} flex-shrink-0 mt-0.5`}>
+                                            <span className="text-xl">{categoryInfo.icon}</span>
                                         </div>
-                                        <div className="flex-1">
-                                            <p className="font-semibold text-slate-200 dark:text-white text-lg">{expense.description}</p>
-                                            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mt-1">
-                                                <span className="font-mono">{dateStr}</span>
-                                                <span>•</span>
+
+                                        {/* Main Content */}
+                                        <div className="flex-1 min-w-0">
+                                            {/* Top Row: Description & Amount */}
+                                            <div className="flex justify-between items-start gap-3">
+                                                <p className="font-semibold text-slate-200 dark:text-white text-base leading-tight break-words pr-2">
+                                                    {expense.description}
+                                                </p>
+                                                <div className="text-right flex-shrink-0">
+                                                    <p className="font-bold text-slate-900 dark:text-white text-lg whitespace-nowrap">
+                                                        {formatCurrency(expense.amount)}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Bottom Row: Metadata */}
+                                            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+                                                <span className="font-mono text-slate-400">{dateStr}</span>
+                                                <span className="text-slate-600 dark:text-slate-500">•</span>
+                                                
                                                 <span>
-                                                    Pago por <span className="font-medium">{expense.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name}</span>
-                                                    {expense.ownershipPercentage !== 50 && (
-                                                        <span className="ml-1 text-slate-400">
-                                                            ({userSettings.user1Name} {expense.ownershipPercentage}% / {100 - expense.ownershipPercentage}% {userSettings.user2Name})
-                                                        </span>
-                                                    )}
+                                                    Pago por <span className="font-medium text-slate-300 dark:text-slate-200">{expense.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name}</span>
+                                                    <span className="ml-1 text-slate-500 dark:text-slate-500">
+                                                        {expense.ownershipPercentage === 50 
+                                                            ? '(50% / 50%)'
+                                                            : `(${userSettings.user1Name} ${expense.ownershipPercentage}% / ${100 - expense.ownershipPercentage}% ${userSettings.user2Name})`
+                                                        }
+                                                    </span>
                                                 </span>
-                                                {expense.frequency === 'MENSAL' && (
-                                                    <>
-                                                        <span>•</span>
-                                                        <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
-                                                            Mensal
-                                                        </span>
-                                                    </>
+
+                                                {(expense.frequency === 'MENSAL' || expense.frequency === 'PARCELADA') && (
+                                                    <span className="text-slate-600 dark:text-slate-500 hidden sm:inline">•</span>
                                                 )}
+
+                                                {expense.frequency === 'MENSAL' && (
+                                                    <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded text-[10px] font-medium uppercase tracking-wide border border-blue-500/20">
+                                                        Mensal
+                                                    </span>
+                                                )}
+
                                                 {expense.frequency === 'PARCELADA' && expense.installmentsCount && (
-                                                    <>
-                                                        <span>•</span>
-                                                        <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs font-medium">
-                                                            {(() => {
-                                                                const current = getCurrentInstallment(expense, currentMonth);
-                                                                return current ? `${current}/${expense.installmentsCount}` : `${expense.installmentsCount}x`;
-                                                            })()}
-                                                        </span>
-                                                    </>
+                                                    <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 rounded text-[10px] font-medium uppercase tracking-wide border border-purple-500/20">
+                                                        {(() => {
+                                                            const current = getCurrentInstallment(expense, currentMonth);
+                                                            return current ? `${current}/${expense.installmentsCount}` : `${expense.installmentsCount}x`;
+                                                        })()}
+                                                    </span>
                                                 )}
                                             </div>
-                                        </div>
-                                        <div className="text-right mr-4">
-                                            <p className="font-bold text-xl text-slate-900 dark:text-white">{formatCurrency(expense.amount)}</p>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">{categoryInfo.label}</p>
-                                        </div>
-                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => handleEditExpense(expense)} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors">
-                                                <Pencil size={18} />
-                                            </button>
-                                            <button onClick={() => confirm('Deseja excluir esta despesa?') && onUpdateExpenses(expenses.filter(e => e.id !== expense.id))} className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                                                <Trash2 size={18} />
-                                            </button>
+                                            
+                                            {/* Category Label & Actions Row */}
+                                            <div className="flex justify-between items-end mt-1 h-8">
+                                                <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium self-center">
+                                                    {categoryInfo.label}
+                                                </p>
+
+                                                {/* Action Buttons - Horizontal Bottom Right */}
+                                                {activeExpenseId === expense.id && (
+                                                    <div className="flex items-center gap-2 animate-scale-in">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleEditExpense(expense); }}
+                                                            className="p-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 hover:text-blue-300 rounded-lg transition-colors shadow-sm"
+                                                            title="Editar"
+                                                        >
+                                                            <Pencil size={18} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense.id); }}
+                                                            className="p-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 rounded-lg transition-colors shadow-sm"
+                                                            title="Excluir"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             );
                         })}
-                    </div>
+            </div>
                 )}
             </div>
 
@@ -577,14 +548,27 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Categoria</label>
-                                <select value={category} onChange={(e) => setCategory(e.target.value as any)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500">
-                                    <option value="CASA">🏠 Casa</option>
-                                    <option value="MERCADO">🛒 Mercado</option>
-                                    <option value="TRANSPORTE">🚗 Transporte</option>
-                                    <option value="LAZER">🎉 Lazer</option>
-                                    <option value="SAUDE">💊 Saúde</option>
-                                    <option value="OUTROS">📦 Outros</option>
-                                </select>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(['CASA', 'MERCADO', 'TRANSPORTE', 'LAZER', 'SAUDE', 'OUTROS'] as const).map((cat) => {
+                                        const info = getCategoryInfo(cat);
+                                        const isSelected = category === cat;
+                                        return (
+                                            <button
+                                                key={cat}
+                                                type="button"
+                                                onClick={() => setCategory(cat)}
+                                                className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
+                                                    isSelected
+                                                        ? 'bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/20 scale-105'
+                                                        : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                                }`}
+                                            >
+                                                <span className="text-2xl mb-1">{info.icon}</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wide">{info.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Quem pagou?</label>
@@ -599,11 +583,26 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Recorrência</label>
-                                <select value={frequency} onChange={(e) => setFrequency(e.target.value as any)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500">
-                                    <option value="UNICA">Única</option>
-                                    <option value="MENSAL">Mensal (Fixo)</option>
-                                    <option value="PARCELADA">Parcelado</option>
-                                </select>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { value: 'UNICA', label: 'Única' },
+                                        { value: 'MENSAL', label: 'Mensal' },
+                                        { value: 'PARCELADA', label: 'Parcelada' }
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setFrequency(opt.value as any)}
+                                            className={`py-3 rounded-xl text-sm font-bold transition-all border ${
+                                                frequency === opt.value
+                                                    ? 'bg-purple-600 text-white border-purple-600 shadow-lg shadow-purple-500/20'
+                                                    : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             {frequency === 'PARCELADA' && (
                                 <div>
@@ -652,22 +651,44 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Nome Participante 2</label>
                                 <input type="text" value={userSettings.user2Name} onChange={(e) => onUpdateSettings({ ...userSettings, user2Name: e.target.value })} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-pink-500" />
                             </div>
-                            <button onClick={() => setShowSettingsModal(false)} className="w-full px-4 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-lg font-bold shadow-lg shadow-pink-500/30 transition-all hover:scale-105 active:scale-95 mt-6">
-                                Salvar
-                            </button>
+                                                        <div className="flex gap-3 mt-6">
+                                <button 
+                                    onClick={() => setShowSettingsModal(false)}
+                                    className="flex-1 px-4 py-3 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        if (!userSettings.user1Name.trim() || !userSettings.user2Name.trim()) {
+                                            alert("Ops! Os nomes não podem ficar vazios.");
+                                            return;
+                                        }
+                                        if (userSettings.user1Name === 'Participante 1' || userSettings.user2Name === 'Participante 2') {
+                                            if(!confirm("Deseja manter os nomes padrão? Personalizar ajuda a identificar quem pagou o quê!")) {
+                                                return;
+                                            }
+                                        }
+                                        setShowSettingsModal(false);
+                                    }} 
+                                    className="flex-1 px-4 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-lg font-bold shadow-lg shadow-pink-500/30 transition-all hover:scale-105 active:scale-95"
+                                >
+                                    Salvar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
-            
+
             {/* Export Modal */}
             {showExportModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
                     <div className="glass-card p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-scale-in bg-white dark:bg-slate-900">
                         <h3 className="text-xl font-bold mb-6 text-slate-900 dark:text-white text-center">Compartilhar / Exportar</h3>
-                        
+
                         <div className="space-y-3">
-                            <button 
+                            <button
                                 onClick={() => {
                                     handleShareSummary();
                                     setShowExportModal(false);
@@ -677,8 +698,8 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                                 <Share2 size={20} />
                                 Compartilhar no WhatsApp
                             </button>
-                            
-                            <button 
+
+                            <button
                                 onClick={handleExportExcel}
                                 className="w-full p-4 bg-[#1D6F42] hover:bg-[#155230] text-white rounded-xl font-bold flex items-center justify-center gap-3 transition-colors shadow-lg"
                             >
@@ -687,7 +708,7 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                             </button>
                         </div>
 
-                        <button 
+                        <button
                             onClick={() => setShowExportModal(false)}
                             className="w-full mt-6 py-3 text-slate-500 dark:text-slate-400 font-medium hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                         >
@@ -696,7 +717,7 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                     </div>
                 </div>
             )}
-    
+
         </div>
     );
 };

@@ -131,6 +131,31 @@ const App: React.FC = () => {
     }
   }, [currentEventId]);
 
+  // Handle Browser Back Button to prevent exiting the app
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      // Se o usuário clicar em Voltar e estivermos em um evento, voltamos para a lista
+      if (currentEventId) {
+        // Previne o comportamento padrão se necessário, mas aqui queremos apenas atualizar o estado
+        setCurrentEventId(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [currentEventId]);
+
+  // Push history state when opening an event
+  useEffect(() => {
+    if (currentEventId) {
+      // Adiciona uma entrada no histórico
+      // Usamos replaceState se já estivermos no hash para evitar duplicação em alguns casos, 
+      // mas pushState é o padrão para "navegar"
+      window.history.pushState({ view: 'event' }, '', '#event');
+    }
+  }, [currentEventId]);
+
+
   const currentEvent = useMemo(() => events.find(e => e.id === currentEventId), [events, currentEventId]);
 
   // If stored event ID doesn't exist in events array anymore (deleted), reset it

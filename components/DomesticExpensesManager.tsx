@@ -436,90 +436,91 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
                                         ${activeExpenseId === expense.id ? 'bg-slate-800/80 dark:bg-slate-700/80' : 'hover:bg-slate-800/50 dark:hover:bg-slate-700/50'}
                                     `}
                                 >
-                                    <div className="flex items-start gap-3">
-                                        {/* Icon */}
-                                        <div className={`p-2.5 rounded-xl ${categoryInfo.bgColor} flex-shrink-0 mt-0.5`}>
-                                            <span className="text-xl">{categoryInfo.icon}</span>
+                                                                        <div className="flex items-start gap-3">
+                                        {/* Left Column: Icon + Category Name */}
+                                        <div className="flex flex-col items-center gap-1 min-w-[3.5rem]">
+                                            <div className={`p-2.5 rounded-xl ${categoryInfo.bgColor} flex-shrink-0`}>
+                                                <span className="text-xl">{categoryInfo.icon}</span>
+                                            </div>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 text-center leading-tight">
+                                                {categoryInfo.label}
+                                            </span>
                                         </div>
 
                                         {/* Main Content */}
                                         <div className="flex-1 min-w-0">
                                             {/* Top Row: Description & Amount */}
-                                            <div className="flex justify-between items-start gap-3">
-                                                <p className="font-semibold text-slate-200 dark:text-white text-base leading-tight break-words pr-2">
+                                            <div className="flex justify-between items-start gap-2">
+                                                <p className="font-semibold text-slate-200 dark:text-white text-base leading-tight break-words pt-1">
                                                     {expense.description}
                                                 </p>
-                                                <div className="text-right flex-shrink-0">
+                                                <div className="text-right flex-shrink-0 pt-1">
                                                     <p className="font-bold text-slate-900 dark:text-white text-lg whitespace-nowrap">
                                                         {formatCurrency(expense.amount)}
                                                     </p>
                                                 </div>
                                             </div>
 
-                                            {/* Bottom Row: Metadata */}
-                                            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                                                <span className="font-mono text-slate-400">{dateStr}</span>
-                                                <span className="text-slate-600 dark:text-slate-500">•</span>
-                                                
-                                                <span>
-                                                    Pago por <span className="font-medium text-slate-300 dark:text-slate-200">{expense.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name}</span>
-                                                    <span className="ml-1 text-slate-500 dark:text-slate-500">
-                                                        {expense.ownershipPercentage === 50 
-                                                            ? '(50% / 50%)'
-                                                            : `(${userSettings.user1Name} ${expense.ownershipPercentage}% / ${100 - expense.ownershipPercentage}% ${userSettings.user2Name})`
-                                                        }
-                                                    </span>
-                                                </span>
+                                            {/* Metadata Column */}
+                                            <div className="mt-2 flex flex-col gap-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+                                                {/* Date & Tags Row */}
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="font-mono text-slate-400">{dateStr}</span>
+                                                    
+                                                    {expense.frequency === 'MENSAL' && (
+                                                        <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded text-[10px] font-medium uppercase tracking-wide border border-blue-500/20">
+                                                            Mensal
+                                                        </span>
+                                                    )}
 
-                                                {(expense.frequency === 'MENSAL' || expense.frequency === 'PARCELADA') && (
-                                                    <span className="text-slate-600 dark:text-slate-500 hidden sm:inline">•</span>
-                                                )}
+                                                    {expense.frequency === 'PARCELADA' && expense.installmentsCount && (
+                                                        <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 rounded text-[10px] font-medium uppercase tracking-wide border border-blue-500/20">
+                                                            {(() => {
+                                                                const current = getCurrentInstallment(expense, currentMonth);
+                                                                return current ? `${current}/${expense.installmentsCount}` : `${expense.installmentsCount}x`;
+                                                            })()}
+                                                        </span>
+                                                    )}
+                                                </div>
 
-                                                {expense.frequency === 'MENSAL' && (
-                                                    <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded text-[10px] font-medium uppercase tracking-wide border border-blue-500/20">
-                                                        Mensal
-                                                    </span>
-                                                )}
-
-                                                {expense.frequency === 'PARCELADA' && expense.installmentsCount && (
-                                                    <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 rounded text-[10px] font-medium uppercase tracking-wide border border-purple-500/20">
-                                                        {(() => {
-                                                            const current = getCurrentInstallment(expense, currentMonth);
-                                                            return current ? `${current}/${expense.installmentsCount}` : `${expense.installmentsCount}x`;
-                                                        })()}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            
-                                            {/* Category Label & Actions Row */}
-                                            <div className="flex justify-between items-end mt-1 h-8">
-                                                <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium self-center">
-                                                    {categoryInfo.label}
-                                                </p>
-
-                                                {/* Action Buttons - Horizontal Bottom Right */}
-                                                {activeExpenseId === expense.id && (
-                                                    <div className="flex items-center gap-2 animate-scale-in">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleEditExpense(expense); }}
-                                                            className="p-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 hover:text-blue-300 rounded-lg transition-colors shadow-sm"
-                                                            title="Editar"
-                                                        >
-                                                            <Pencil size={18} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense.id); }}
-                                                            className="p-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 rounded-lg transition-colors shadow-sm"
-                                                            title="Excluir"
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </button>
+                                                {/* Bottom Row: Payer Info + Actions */}
+                                                <div className="flex justify-between items-end mt-0.5 min-h-[2.5rem]">
+                                                    {/* Payer & Responsibility */}
+                                                    <div className="flex flex-col justify-center">
+                                                        <span>
+                                                            Pago por <span className="font-medium text-slate-300 dark:text-slate-200">{expense.payer === 'USER1' ? userSettings.user1Name : userSettings.user2Name}</span>
+                                                        </span>
+                                                        <span className="text-slate-500 dark:text-slate-500 text-[11px]">
+                                                            {expense.ownershipPercentage === 50 
+                                                                ? '(50% / 50%)'
+                                                                : `(${userSettings.user1Name} ${expense.ownershipPercentage}% / ${100 - expense.ownershipPercentage}% ${userSettings.user2Name})`
+                                                            }
+                                                        </span>
                                                     </div>
-                                                )}
+
+                                                    {/* Action Buttons - Inline Right */}
+                                                    {activeExpenseId === expense.id && (
+                                                        <div className="flex items-center gap-2 animate-scale-in ml-2 mb-0.5">
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); handleEditExpense(expense); }}
+                                                                className="p-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 hover:text-blue-300 rounded-lg transition-colors shadow-sm"
+                                                                title="Editar"
+                                                            >
+                                                                <Pencil size={18} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense.id); }}
+                                                                className="p-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 rounded-lg transition-colors shadow-sm"
+                                                                title="Excluir"
+                                                            >
+                                                                <Trash2 size={18} />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
+                                    </div>                                </div>
                             );
                         })}
             </div>
@@ -529,7 +530,7 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
             {/* Modal Add/Edit */}
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-                    <div className="glass-card p-6 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <div className="glass-card p-6 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
                         <h3 className="text-xl font-bold mb-6 text-slate-900 dark:text-white">{editingExpense ? 'Editar Despesa' : 'Nova Despesa'}</h3>
                         <form onSubmit={handleAddExpense} className="space-y-4">
                             <div>
@@ -640,7 +641,7 @@ export const DomesticExpensesManager: React.FC<DomesticExpensesManagerProps> = (
             {/* Modal Settings */}
             {showSettingsModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-                    <div className="glass-card p-6 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <div className="glass-card p-6 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
                         <h3 className="text-xl font-bold mb-6 text-slate-900 dark:text-white">⚙️ Configurações</h3>
                         <div className="space-y-4">
                             <div>

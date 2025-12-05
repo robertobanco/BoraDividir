@@ -12,18 +12,23 @@ interface EventSelectorProps {
   events: BillSplitEvent[];
   currentEventId: string | null;
   onSelectEvent: (id: string) => void;
-  onAddEvent: (name: string, date: string, type: 'SHARED_EXPENSES' | 'ITEMIZED_BILL', options?: { billSubtotal?: number; tip?: { value: number; type: 'PERCENT' | 'FIXED' }; tax?: number; }) => void;
+  onAddEvent: (name: string, date: string, type: 'SHARED_EXPENSES' | 'ITEMIZED_BILL' | 'DOMESTIC_EXPENSES', options?: { billSubtotal?: number; tip?: { value: number; type: 'PERCENT' | 'FIXED' }; tax?: number; }) => void;
   onEditEvent: (id: string, name: string, date: string) => void;
   onDeleteEvent: (id: string) => void;
   onBack: () => void;
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
   onShowAlert: (title: string, message: string) => void;
+  onExportData?: () => void;
+  onImportData?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  fileInputRef?: React.RefObject<HTMLInputElement>;
 }
 
 const calculateEventTotal = (event: BillSplitEvent): number => {
     if (event.type === 'SHARED_EXPENSES') {
         return event.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    } else if (event.type === 'DOMESTIC_EXPENSES') {
+        return event.domesticExpenses.reduce((sum, exp) => sum + exp.amount, 0);
     } else { // ITEMIZED_BILL
         const itemsSubtotal = event.items.reduce((sum, item) => sum + item.amount, 0);
         const tipAmount = event.tip.type === 'PERCENT'
@@ -71,6 +76,17 @@ const EventTypeModal: React.FC<{ onSelect: (type: 'SHARED_EXPENSES' | 'ITEMIZED_
                         </div>
                         <p className="text-sm text-slate-500 dark:text-slate-400 pl-[52px]">Ideal para viagens ou casa. Registre quem pagou o quê e acerte as diferenças.</p>
                     </button>
+                    <button onClick={() => onSelect('DOMESTIC_EXPENSES')} className="group w-full text-left p-5 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:border-violet-300 dark:hover:border-violet-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-violet-500">
+                        <div className="flex items-center gap-3 mb-1">
+                             <div className="p-2 bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 rounded-lg group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                </svg>
+                            </div>
+                            <p className="font-bold text-slate-800 dark:text-slate-100 text-lg group-hover:text-violet-700 dark:group-hover:text-violet-300">Contas Domésticas</p>
+                        </div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 pl-[52px]">Ideal para casais. Gerencie despesas mensais da casa com divisão personalizada.</p>
+                    </button>
                 </div>
                 <div className="mt-8 text-center">
                     <button onClick={onCancel} className="text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">Cancelar</button>
@@ -80,7 +96,7 @@ const EventTypeModal: React.FC<{ onSelect: (type: 'SHARED_EXPENSES' | 'ITEMIZED_
     )
 }
 
-export const EventSelector: React.FC<EventSelectorProps> = ({ events, currentEventId, onSelectEvent, onAddEvent, onEditEvent, onDeleteEvent, onBack, theme, setTheme, onShowAlert }) => {
+export const EventSelector: React.FC<EventSelectorProps> = ({ events, currentEventId, onSelectEvent, onAddEvent, onEditEvent, onDeleteEvent, onBack, theme, setTheme, onShowAlert, onExportData, onImportData, fileInputRef }) => {
   const [newEventName, setNewEventName] = useState('');
   const [newEventDate, setNewEventDate] = useState(new Date().toISOString().split('T')[0]);
   const [pendingEvent, setPendingEvent] = useState<{name: string, date: string} | null>(null);
@@ -106,13 +122,15 @@ export const EventSelector: React.FC<EventSelectorProps> = ({ events, currentEve
     setShowTypeModal(true);
   };
 
-  const handleSelectEventType = (type: 'SHARED_EXPENSES' | 'ITEMIZED_BILL') => {
+  const handleSelectEventType = (type: 'SHARED_EXPENSES' | 'ITEMIZED_BILL' | 'DOMESTIC_EXPENSES') => {
     if (!pendingEvent) return;
     setShowTypeModal(false);
-    if (type === 'SHARED_EXPENSES') {
+    if (type === 'SHARED_EXPENSES' || type === 'DOMESTIC_EXPENSES') {
+        // SHARED_EXPENSES e DOMESTIC_EXPENSES não precisam de setup adicional
         onAddEvent(pendingEvent.name, pendingEvent.date, type);
         cleanup();
     } else {
+        // ITEMIZED_BILL precisa do modal de setup (subtotal, taxa, etc)
         setShowBillSetupModal(true);
     }
   }
@@ -182,12 +200,48 @@ export const EventSelector: React.FC<EventSelectorProps> = ({ events, currentEve
                     <span className="font-bold text-lg bg-clip-text text-transparent bg-gradient-to-r from-violet-600 to-indigo-600 dark:from-violet-300 dark:to-indigo-300">Bora Dividir</span>
                 </div>
              </div>
-            <button 
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
-              className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-                {theme === 'light' ? <MoonIcon className="h-6 w-6" /> : <SunIcon className="h-6 w-6" />}
-            </button>
+            <div className="flex items-center gap-2">
+                {/* Export button */}
+                {onExportData && events.length > 0 && (
+                    <button
+                        onClick={onExportData}
+                        className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        title="Exportar dados"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L9 8m4-4v12" />
+                        </svg>
+                    </button>
+                )}
+                {/* Import button */}
+                {onImportData && fileInputRef && (
+                    <>
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="Importar dados"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                        </button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".json"
+                            onChange={onImportData}
+                            className="hidden"
+                        />
+                    </>
+                )}
+                {/* Theme button */}
+                <button 
+                  onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} 
+                  className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                    {theme === 'light' ? <MoonIcon className="h-6 w-6" /> : <SunIcon className="h-6 w-6" />}
+                </button>
+            </div>
         </div>
       </header>
 
@@ -296,10 +350,20 @@ export const EventSelector: React.FC<EventSelectorProps> = ({ events, currentEve
                                    </div>
 
                                    <div className="mb-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${event.type === 'SHARED_EXPENSES' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'}`}>
-                                            {event.type === 'SHARED_EXPENSES' ? 'Compartilhado' : 'Detalhado'}
-                                        </span>
-                                   </div>
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                        event.type === 'SHARED_EXPENSES' 
+                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' 
+                                                            : event.type === 'DOMESTIC_EXPENSES'
+                                                                ? 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'
+                                                                : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                                                    }`}>
+                                                        {event.type === 'SHARED_EXPENSES' 
+                                                            ? 'Compartilhado' 
+                                                            : event.type === 'DOMESTIC_EXPENSES'
+                                                                ? 'Doméstico'
+                                                                : 'Detalhado'}
+                                                    </span>
+                                                </div>
 
                                     <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate mb-1 pr-16">{event.name}</h3>
                                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{formatDate(event.date || event.createdAt)}</p>
@@ -316,7 +380,16 @@ export const EventSelector: React.FC<EventSelectorProps> = ({ events, currentEve
                                                     +{event.participants.length - 4}
                                                 </div>
                                             )}
-                                            {event.participants.length === 0 && <span className="text-xs text-slate-400 italic py-2">Sem participantes</span>}
+                                            {event.type === 'DOMESTIC_EXPENSES' ? (
+                                                            <>
+                                                                <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white dark:ring-slate-800 bg-gradient-to-br from-pink-400 to-rose-400 flex items-center justify-center text-xs font-bold text-white">
+                                                                    {event.userSettings.user1Name.charAt(0).toUpperCase()}
+                                                                </div>
+                                                                <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white dark:ring-slate-800 bg-gradient-to-br from-violet-400 to-indigo-400 flex items-center justify-center text-xs font-bold text-white">
+                                                                    {event.userSettings.user2Name.charAt(0).toUpperCase()}
+                                                                </div>
+                                                            </>
+                                                        ) : event.participants.length === 0 && <span className="text-xs text-slate-400 italic py-2">Sem participantes</span>}
                                         </div>
                                         <div className="text-right">
                                             <p className="text-xs text-slate-500 dark:text-slate-400">Total</p>

@@ -35,6 +35,44 @@ export interface Balance {
   balance: number;
 }
 
+// Domestic Expenses Types
+export enum Payer {
+  USER1 = 'USER1',
+  USER2 = 'USER2'
+}
+
+export enum CategoryType {
+  HOME = 'HOME',
+  FOOD = 'FOOD',
+  TRANSPORT = 'TRANSPORT',
+  LEISURE = 'LEISURE',
+  HEALTH = 'HEALTH',
+  OTHER = 'OTHER'
+}
+
+export enum Frequency {
+  ONE_TIME = 'ONE_TIME',
+  MONTHLY = 'MONTHLY',
+  INSTALLMENTS = 'INSTALLMENTS'
+}
+
+export interface DomesticExpense {
+  id: string;
+  title: string;
+  amount: number;
+  date: string;
+  payer: Payer;
+  category: CategoryType;
+  ownershipPercentage: number;
+  frequency: Frequency;
+  installmentsCount?: number;
+}
+
+export interface UserSettings {
+  user1Name: string;
+  user2Name: string;
+}
+
 interface BaseEvent {
   id: string;
   name: string;
@@ -58,5 +96,10 @@ export type BillSplitEvent = BaseEvent & (
       tax: number; // Outras taxas (couvert, etc)
       billSubtotal: number; // Subtotal dos produtos para validação
       actualPayments: ActualPayment[];
+    }
+  | {
+      type: 'DOMESTIC_EXPENSES';
+      domesticExpenses: DomesticExpense[];
+      userSettings: UserSettings;
     }
 );

@@ -1,12 +1,13 @@
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Participant, Expense, Transaction, Balance, BillSplitEvent, BillItem, ActualPayment } from './types';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import type { Participant, Expense, Transaction, Balance, BillSplitEvent, BillItem, ActualPayment, DomesticExpense, UserSettings } from './types';
 import { ParticipantManager } from './components/ParticipantManager';
 import { ExpenseManager } from './components/ExpenseManager';
 import { SettlementDisplay } from './components/SettlementDisplay';
 import { EventSelector } from './components/EventSelector';
 import { ItemizedBillManager } from './components/ItemizedBillManager';
 import { ShareSummaryModal } from './components/ShareSummaryModal';
+import { DomesticExpensesManager } from './components/DomesticExpensesManager';
 import { SunIcon } from './components/icons/SunIcon';
 import { MoonIcon } from './components/icons/MoonIcon';
 import { ArrowLeftIcon } from './components/icons/ArrowLeftIcon';
@@ -20,8 +21,18 @@ const App: React.FC = () => {
     if (!saved) return [];
     const parsedEvents: BillSplitEvent[] = JSON.parse(saved);
     return parsedEvents.map(event => {
+      // Adicionar date se não existir
       if (!(event as any).date) {
-        return { ...event, date: event.createdAt };
+        event = { ...event, date: event.createdAt };
+      }
+      // Validar eventos domésticos antigos
+      if (event.type === 'DOMESTIC_EXPENSES') {
+        if (!(event as any).domesticExpenses) {
+          event = { ...event, domesticExpenses: [] };
+        }
+        if (!(event as any).userSettings) {
+          event = { ...event, userSettings: { user1Name: 'Participante 1', user2Name: 'Participante 2' } };
+        }
       }
       return event;
     });
@@ -35,6 +46,23 @@ const App: React.FC = () => {
   const [isSummaryVisible, setSummaryVisible] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('theme');
+    // Domestic Expenses Logic
+  const updateDomesticExpenses = (expenses: DomesticExpense[]) => {
+    if (!currentEvent || currentEvent.type !== 'DOMESTIC_EXPENSES') return;
+    updateCurrentEvent(event => {
+      if (event.type !== 'DOMESTIC_EXPENSES') return event;
+      return { ...event, domesticExpenses: expenses };
+    });
+  };
+
+  const updateDomesticSettings = (settings: UserSettings) => {
+    if (!currentEvent || currentEvent.type !== 'DOMESTIC_EXPENSES') return;
+    updateCurrentEvent(event => {
+      if (event.type !== 'DOMESTIC_EXPENSES') return event;
+      return { ...event, userSettings: settings };
+    });
+  };
+
     return (savedTheme as 'light' | 'dark') || 'dark'; 
   });
 
@@ -129,7 +157,7 @@ const App: React.FC = () => {
   };
 
   // Event Management
-  const addEvent = (name: string, date: string, type: 'SHARED_EXPENSES' | 'ITEMIZED_BILL', options: { billSubtotal?: number; tip?: { value: number; type: 'PERCENT' | 'FIXED'}; tax?: number } = {}) => {
+  const addEvent = (name: string, date: string, type: 'SHARED_EXPENSES' | 'ITEMIZED_BILL' | 'DOMESTIC_EXPENSES', options: { billSubtotal?: number; tip?: { value: number; type: 'PERCENT' | 'FIXED'}; tax?: number } = {}) => {
     const baseEvent = {
       id: crypto.randomUUID(),
       name,
@@ -141,7 +169,7 @@ const App: React.FC = () => {
     let newEvent: BillSplitEvent;
     if (type === 'SHARED_EXPENSES') {
       newEvent = { ...baseEvent, type, expenses: [] };
-    } else {
+    } else if (type === 'ITEMIZED_BILL') {
       newEvent = { 
           ...baseEvent, 
           type, 
@@ -150,6 +178,17 @@ const App: React.FC = () => {
           tax: options.tax || 0, 
           billSubtotal: options.billSubtotal || 0,
           actualPayments: [],
+      };
+    } else {
+      // DOMESTIC_EXPENSES
+      newEvent = {
+          ...baseEvent,
+          type,
+          domesticExpenses: [],
+          userSettings: {
+            user1Name: 'Participante 1',
+            user2Name: 'Participante 2'
+          }
       };
     }
 
@@ -328,7 +367,60 @@ const App: React.FC = () => {
   const toggleParticipants = () => setActiveSection(prev => prev === 'participants' ? null : 'participants');
   const toggleExpenses = () => setActiveSection(prev => prev === 'expenses' ? null : 'expenses');
 
-  return (
+  // Domestic Expenses Logic
+  const updateDomesticExpenses = (expenses: DomesticExpense[]) => {
+    if (!currentEvent || currentEvent.type !== 'DOMESTIC_EXPENSES') return;
+    updateCurrentEvent(event => {
+      if (event.type !== 'DOMESTIC_EXPENSES') return event;
+      return { ...event, domesticExpenses: expenses };
+    });
+  };
+
+  const updateDomesticSettings = (settings: UserSettings) => {
+    if (!currentEvent || currentEvent.type !== 'DOMESTIC_EXPENSES') return;
+    updateCurrentEvent(event => {
+      if (event.type !== 'DOMESTIC_EXPENSES') return event;
+      return { ...event, userSettings: settings };
+    });
+  };
+
+    // Export/Import functionality
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportData = () => {
+    const dataStr = JSON.stringify(events, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bora-dividir-backup-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showAlert('Sucesso', 'Dados exportados com sucesso!');
+  };
+
+  const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedEvents = JSON.parse(e.target?.result as string);
+        if (Array.isArray(importedEvents)) {
+          setEvents(importedEvents);
+          showAlert('Sucesso', `${importedEvents.length} evento(s) importado(s) com sucesso!`);
+        } else {
+          showAlert('Erro', 'Arquivo inválido.');
+        }
+      } catch (error) {
+        showAlert('Erro', 'Não foi possível ler o arquivo.');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+    return (
     <>
       <EventSelector 
         events={events}
@@ -341,6 +433,9 @@ const App: React.FC = () => {
         theme={theme}
         setTheme={setTheme}
         onShowAlert={showAlert}
+        onExportData={handleExportData}
+        onImportData={handleImportData}
+        fileInputRef={fileInputRef}
       />
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-24">
@@ -349,8 +444,18 @@ const App: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{currentEvent.name}</h1>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${currentEvent.type === 'SHARED_EXPENSES' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'}`}>
-                        {currentEvent.type === 'SHARED_EXPENSES' ? 'Despesas Compartilhadas' : 'Conta Detalhada'}
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                        currentEvent.type === 'SHARED_EXPENSES' 
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' 
+                            : currentEvent.type === 'DOMESTIC_EXPENSES'
+                                ? 'bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300'
+                                : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                    }`}>
+                        {currentEvent.type === 'SHARED_EXPENSES' 
+                            ? 'Despesas Compartilhadas' 
+                            : currentEvent.type === 'DOMESTIC_EXPENSES'
+                                ? 'Contas Domésticas'
+                                : 'Conta Detalhada'}
                     </span>
                 </div>
             </div>
@@ -366,14 +471,16 @@ const App: React.FC = () => {
                 />
             )}
 
-            <ParticipantManager 
-              participants={currentEvent.participants}
-              onAddParticipant={addParticipant}
-              onRemoveParticipant={removeParticipant}
-              onUpdateParticipant={updateParticipant}
-              isExpanded={activeSection === 'participants'}
-              onToggle={toggleParticipants}
-            />
+            {(currentEvent.type === 'SHARED_EXPENSES' || currentEvent.type === 'ITEMIZED_BILL') && (
+              <ParticipantManager 
+                participants={currentEvent.participants}
+                onAddParticipant={addParticipant}
+                onRemoveParticipant={removeParticipant}
+                onUpdateParticipant={updateParticipant}
+                isExpanded={activeSection === 'participants'}
+                onToggle={toggleParticipants}
+              />
+            )}
             
             {currentEvent.type === 'SHARED_EXPENSES' && (
                 <>
@@ -425,6 +532,16 @@ const App: React.FC = () => {
                     isExpanded={activeSection === 'expenses'}
                     onToggle={toggleExpenses}
                 />
+            )}
+
+            {/* Domestic Expenses Manager */}
+            {currentEvent.type === 'DOMESTIC_EXPENSES' && (
+              <DomesticExpensesManager
+                expenses={currentEvent.domesticExpenses}
+                userSettings={currentEvent.userSettings}
+                onUpdateExpenses={updateDomesticExpenses}
+                onUpdateSettings={updateDomesticSettings}
+              />
             )}
           </div>
         )}

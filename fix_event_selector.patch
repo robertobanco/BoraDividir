@@ -1,0 +1,13 @@
+--- a/components/EventSelector.tsx
++++ b/components/EventSelector.tsx
+@@ -24,7 +24,9 @@ interface EventSelectorProps {
+ const calculateEventTotal = (event: BillSplitEvent): number => {
+     if (event.type === 'SHARED_EXPENSES') {
+         return event.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+-    } else { // ITEMIZED_BILL
++    } else if (event.type === 'DOMESTIC_EXPENSES') {
++        return event.domesticExpenses.reduce((sum, exp) => sum + exp.amount, 0);
++    } else { // ITEMIZED_BILL
+         const itemsSubtotal = event.items.reduce((sum, item) => sum + item.amount, 0);
+         const tipAmount = event.tip.type === 'PERCENT'
+             ? itemsSubtotal * (event.tip.value / 100)

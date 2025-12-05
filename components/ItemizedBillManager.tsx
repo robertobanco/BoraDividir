@@ -386,7 +386,7 @@ export const ItemizedBillManager: React.FC<ItemizedBillManagerProps> = ({ partic
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    {/* Always show summary when collapsed */}
+                    {/* Show summary when collapsed */}
                     {!isExpanded && items.length > 0 && (
                         <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 animate-fade-in">
                              <span className="hidden sm:inline font-medium">{items.length} itens</span>
@@ -396,9 +396,28 @@ export const ItemizedBillManager: React.FC<ItemizedBillManagerProps> = ({ partic
                              </span>
                         </div>
                     )}
+                    {/* Show difference message when expanded */}
+                    {isExpanded && !isSubtotalValid && (
+                        <span className={`text-sm font-medium ${
+                            difference > 0 
+                                ? 'text-amber-600 dark:text-amber-400' 
+                                : 'text-blue-600 dark:text-blue-400'
+                        }`}>
+                            {difference > 0 
+                                ? `Falta incluir ${formatCurrency(difference)}` 
+                                : `Passou ${formatCurrency(Math.abs(difference))}`}
+                        </span>
+                    )}
+                    {isExpanded && isSubtotalValid && items.length > 0 && (
+                        <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                            Subtotal correto ✓
+                        </span>
+                    )}
                     <ChevronDownIcon className={`h-5 w-5 text-slate-400 transition-transform duration-300 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                 </div>
             </div>
+
+
 
             {isExpanded && (
             <div className="px-4 pb-6 sm:px-6 animate-fade-in">
@@ -418,8 +437,8 @@ export const ItemizedBillManager: React.FC<ItemizedBillManagerProps> = ({ partic
                                 placeholder="R$" 
                                 className="w-20 sm:w-24 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-violet-500" 
                             />
-                            <button type="submit" disabled={!itemDescription.trim() || !itemAmount} className="bg-violet-600 hover:bg-violet-700 text-white p-2 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0">
-                                <CurrencyDollarIcon className="h-5 w-5"/>
+                            <button type="submit" disabled={!itemDescription.trim() || !itemAmount} className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0 text-sm font-semibold">
+                                Incluir
                             </button>
                         </form>
 

@@ -39,6 +39,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ participants, ex
   const [viewingReceipt, setViewingReceipt] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const descriptionInputRef = useRef<HTMLInputElement>(null);
   
   useEffect(() => {
     if (editingExpense) {
@@ -59,6 +60,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ participants, ex
     setReceiptImage(null);
     if(fileInputRef.current) fileInputRef.current.value = "";
     if(cameraInputRef.current) cameraInputRef.current.value = "";
+    setTimeout(() => descriptionInputRef.current?.focus(), 100);
   }
   
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,7 +147,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ participants, ex
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">O que foi?</label>
-                                <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex: Supermercado" className="w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all text-slate-900 dark:text-white" />
+                                <input ref={descriptionInputRef} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex: Supermercado" className="w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all text-slate-900 dark:text-white" />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Valor (R$)</label>
